@@ -173,6 +173,7 @@ function App() {
   const [userSearch, setUserSearch] = useState('')
   const [userModal, setUserModal] = useState(null)
   const [userForm, setUserForm] = useState({ full_name: '', email: '', password: '', role: 'club_admin', club_id: '' })
+  const [passwordModal, setPasswordModal] = useState(false)
 
   const isFederationAdmin = profile?.role === 'federation_admin'
   const isClubAdmin = profile?.role === 'club_admin'
@@ -796,6 +797,7 @@ function App() {
             <div className="avatar">{(profile?.full_name || profile?.email || 'م').slice(0, 1)}</div>
             <div><strong>{profile?.full_name || 'المستخدم'}</strong><span>{isFederationAdmin ? 'رئيس الرابطة' : 'رئيس نادي'}</span></div>
           </div>
+          <button className="nav-item" onClick={() => { setPasswordModal(true); setSidebarOpen(false) }}>تغيير كلمة المرور</button>
           <button className="logout" onClick={logout}>تسجيل الخروج</button>
         </div>
       </aside>
@@ -938,6 +940,7 @@ function App() {
       {clubModal && <ClubModal form={clubForm} setForm={setClubForm} onClose={() => setClubModal(null)} onSave={saveClub} editing={clubModal !== 'add'} error={error} />}
       {swimmerModal && <SwimmerModal form={swimmerForm} setForm={setSwimmerForm} setFile={setSwimmerFile} photoFile={swimmerPhotoFile} setPhotoFile={setSwimmerPhotoFile} clubs={clubs} isClubAdmin={isClubAdmin} onClose={() => setSwimmerModal(null)} onSave={saveSwimmer} editing={swimmerModal !== 'add'} error={error} />}
       {registrationModal && <RegistrationModal form={registrationForm} setForm={setRegistrationForm} competitions={competitions} swimmers={swimmers} onClose={() => setRegistrationModal(null)} onSave={saveRegistration} editing={registrationModal !== 'add'} error={error} />}
+      {passwordModal && <PasswordModal email={profile?.email || session?.user?.email} onClose={() => setPasswordModal(false)} />}
       {userModal && <UserModal form={userForm} setForm={setUserForm} clubs={clubs} onClose={() => setUserModal(null)} onSave={saveUser} editing={userModal !== 'add'} error={error} />}
 
       {/* نافذة بطاقة السباح للطباعة (بطاقة واحدة) */}
@@ -1249,6 +1252,54 @@ function UsersPage({ users, search, setSearch, onAdd, onEdit, onDelete, error })
       </table>
     </div>
   </section>
+}
+
+function PasswordModal({ email, onClose }) {
+  const [form, setForm] = useState({ current: '', next: '', confirm: '' })
+  const [msg, setMsg] = useState({ type: '', text: '' })
+  const [saving, setSaving] = useState(false)
+  const update = (key, value) => setForm({ ...form, [key]: value })
+
+  async function submit(e) {
+    e.preventDefault()
+    setMsg({ type: '', text: '' })
+    if (form.next.length < 6) return setMsg({ type: 'error', text: 'كلمة المرور الجديدة يجب ألا تقل عن 6 خانات.' })
+    if (form.next !== form.confirm) return setMsg({ type: 'error', text: 'تأكيد كلمة المرور غير مطابق.' })
+    if (form.next === form.current) return setMsg({ type: 'error', text: 'كلمة المرور الجديدة يجب أن تختلف عن الحالية.' })
+
+    setSaving(true)
+    // التحقق من كلمة المرور الحالية
+    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password: form.current })
+    if (authErr) {
+      setSaving(false)
+      return setMsg({ type: 'error', text: 'كلمة المرور الحالية غير صحيحة.' })
+    }
+    const { error: updErr } = await supabase.auth.updateUser({ password: form.next })
+    setSaving(false)
+    if (updErr) return setMsg({ type: 'error', text: updErr.message })
+
+    setForm({ current: '', next: '', confirm: '' })
+    setMsg({ type: 'ok', text: 'تم تغيير كلمة المرور بنجاح.' })
+  }
+
+  return <Modal title="تغيير كلمة المرور" onClose={onClose}>
+    {msg.text && <div className="alert" style={msg.type === 'ok' ? { background: '#e8f7ee', color: '#146c3a' } : undefined}>{msg.text}</div>}
+    <form onSubmit={submit} className="form-grid">
+      <label className="wide">كلمة المرور الحالية *
+        <input type="password" required autoComplete="current-password" value={form.current} onChange={e => update('current', e.target.value)} />
+      </label>
+      <label className="wide">كلمة المرور الجديدة *
+        <input type="password" required minLength={6} autoComplete="new-password" placeholder="6 خانات على الأقل" value={form.next} onChange={e => update('next', e.target.value)} />
+      </label>
+      <label className="wide">تأكيد كلمة المرور الجديدة *
+        <input type="password" required minLength={6} autoComplete="new-password" value={form.confirm} onChange={e => update('confirm', e.target.value)} />
+      </label>
+      <div className="form-actions wide">
+        <button type="button" onClick={onClose}>إغلاق</button>
+        <button className="primary" disabled={saving}>{saving ? 'جارٍ الحفظ...' : 'حفظ كلمة المرور'}</button>
+      </div>
+    </form>
+  </Modal>
 }
 
 function UserModal({ form, setForm, clubs, onClose, onSave, editing, error }) {
